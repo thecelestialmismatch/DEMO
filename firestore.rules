@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /firewall/rules
+    // Document ID: ruleId
+    // Fields:
+    //   - id: string
+    //   - name: string
+    //   - pattern: string
+    //   - type: string (regex, keyword, pii, secret)
+    //   - action: string (block, alert, mask)
+    //   - enabled: bool
+    //   - description: string
+    //
+    // Collection: /firewall/logs
+    // Document ID: logId
+    // Fields:
+    //   - id: string
+    //   - timestamp: string (ISO 8601)
+    //   - promptSnippet: string
+    //   - violations: list<string>
+    //   - blocked: bool
+    //   - latency: number
+    //   - model: string
+    //
+    // Collection: /simulations
+    // Document ID: simId
+    // Fields:
+    //   - id: string
+    //   - mode: string
+    //   - status: string
+    //   - ownerId: string
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "raigaurav428@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidRule(data) {
+      return data.keys().hasAll(['id', 'name', 'pattern', 'type', 'action', 'enabled']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.pattern is string && data.pattern.size() > 0 && data.pattern.size() < 500 &&
+             data.type in ['regex', 'keyword', 'pii', 'secret'] &&
+             data.action in ['block', 'alert', 'mask'] &&
+             data.enabled is bool &&
+             (!('description' in data) || (data.description is string && data.description.size() < 1000));
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'blocked', 'latency']) &&
+             data.id is string &&
+             data.timestamp is string &&
+             data.blocked is bool &&
+             data.latency is number &&
+             (!('violations' in data) || data.violations is list) &&
+             (!('promptSnippet' in data) || (data.promptSnippet is string && data.promptSnippet.size() < 200)) &&
+             (!('model' in data) || (data.model is string && data.model.size() < 100));
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Firewall Rules
+    match /firewall/config/rules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidRule(request.resource.data);
+    }
+
+    // Firewall Logs
+    match /firewall/audit/logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidLog(request.resource.data);
+      allow update, delete: if false; // Logs are immutable
+    }
+
+    // Simulations
+    match /simulations/{simId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || isAdmin());
+      allow write: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Users (for RBAC)
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "FirewallRule": {
+      "title": "Firewall Rule",
+      "description": "A security rule for scanning AI prompts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "pattern": { "type": "string" },
+        "type": { "type": "string", "enum": ["regex", "keyword", "pii", "secret"] },
+        "action": { "type": "string", "enum": ["block", "alert", "mask"] },
+        "enabled": { "type": "boolean" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "pattern", "type", "action", "enabled"]
+    },
+    "FirewallLog": {
+      "title": "Firewall Log",
+      "description": "An audit log entry for a scanned AI request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "promptSnippet": { "type": "string" },
+        "violations": { "type": "array", "items": { "type": "string" } },
+        "blocked": { "type": "boolean" },
+        "latency": { "type": "number" },
+        "model": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "blocked", "latency"]
+    },
+    "SimulationState": {
+      "title": "Simulation State",
+      "description": "The current state of a Kaelus simulation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mode": { "type": "string", "enum": ["prediction", "development", "firewall", "strategy"] },
+        "currentRound": { "type": "number" },
+        "maxRounds": { "type": "number" },
+        "status": { "type": "string", "enum": ["idle", "initializing", "running", "completed", "error"] },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "mode", "status"]
+    }
+  },
+  "firestore": {
+    "/firewall/rules": {
+      "schema": { "$ref": "FirewallRule" },
+      "description": "Global security rules for the AI gateway."
+    },
+    "/firewall/logs": {
+      "schema": { "$ref": "FirewallLog" },
+      "description": "Audit trail for all AI traffic."
+    },
+    "/simulations/{simId}": {
+      "schema": { "$ref": "SimulationState" },
+      "description": "State for individual simulation runs."
+    }
+  }
+}
